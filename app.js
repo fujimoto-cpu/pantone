@@ -85,6 +85,26 @@ function deltaE2000(lab1, lab2) {
   );
 }
 
+// ── HSL helpers ──
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+  if (max === min) { h = s = 0; }
+  else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return [h, s, l];
+}
+
 // ── Render ──
 
 function render() {
@@ -126,6 +146,14 @@ function render() {
 
   STATE.filtered = filtered;
   $('#count').textContent = filtered.length.toLocaleString();
+
+  // 色相バーの有効化（色相順 & 検索なし時のみ）
+  const hueBar = $('#hue-bar');
+  if (STATE.sort === 'hue' && !q) {
+    hueBar.classList.remove('disabled');
+  } else {
+    hueBar.classList.add('disabled');
+  }
 
   const grid = $('#grid');
   const empty = $('#empty');
@@ -188,6 +216,195 @@ function openDetail(c) {
     </div>
   `;
   dlg.showModal();
+}
+
+// ── Hue bar → scroll to color ──
+
+function setupHueBar() {
+  const bar = $('#hue-bar');
+  const marker = $('#hue-marker');
+
+  bar.addEventListener('click', (e) => {
+    if (bar.classList.contains('disabled')) return;
+    const rect = bar.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    const targetHue = Math.max(0, Math.min(1, ratio));
+
+    // 色相順ソート想定。filtered の中で targetHue に最も近いカードへスクロール
+    const candidates = STATE.filtered.filter(c => c.s >= 0.08);  // 無彩色は除外
+    if (candidates.length === 0) return;
+    let bestIdx = 0, bestDiff = Infinity;
+    candidates.forEach((c, i) => {
+      const diff = Math.min(Math.abs(c.h - targetHue), 1 - Math.abs(c.h - targetHue));
+      if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+    });
+    const targetColor = candidates[bestIdx];
+    const fullIdx = STATE.filtered.indexOf(targetColor);
+    const cards = $('#grid').children;
+    if (cards[fullIdx]) {
+      // ヘッダーが sticky なので、scroll マージン分を引いて精密スクロール
+      const cardRect = cards[fullIdx].getBoundingClientRect();
+      const scrollTop = window.scrollY + cardRect.top - 200;
+      window.scrollTo(0, scrollTop);  // 旧式 API（preview/sandbox 環境互換）
+      // ハイライト
+      cards[fullIdx].style.outline = '3px solid var(--accent)';
+      setTimeout(() => { cards[fullIdx].style.outline = ''; }, 1500);
+    }
+
+    bar.classList.add('show-marker');
+    marker.style.left = (ratio * 100) + '%';
+  });
+
+  bar.addEventListener('mousemove', (e) => {
+    if (bar.classList.contains('disabled')) return;
+    const rect = bar.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    bar.style.cursor = 'crosshair';
+    bar.title = `この付近の色相にジャンプ（H≈${Math.round(ratio*360)}°）`;
+  });
+}
+
+// ── Image → color detection ──
+
+function extractDominantColors(imageData, maxColors = 6) {
+  // RGB を 4bit (16段階) に量子化してバケット化
+  const buckets = new Map();
+  const { data } = imageData;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+    if (a < 128) continue;
+    // 4bit 量子化（各色 16段階）
+    const rq = (r >> 4) << 4 | 8;
+    const gq = (g >> 4) << 4 | 8;
+    const bq = (b >> 4) << 4 | 8;
+    const key = (rq << 16) | (gq << 8) | bq;
+    buckets.set(key, (buckets.get(key) || 0) + 1);
+  }
+  // 多い順
+  const sorted = [...buckets.entries()].sort((a, b) => b[1] - a[1]);
+
+  // 上位を取りつつ、近い色は統合（RGB距離 < 40 ならスキップ）
+  const result = [];
+  for (const [key, count] of sorted) {
+    const r = (key >> 16) & 0xFF;
+    const g = (key >> 8) & 0xFF;
+    const b = key & 0xFF;
+    // 既存色との距離
+    let tooClose = false;
+    for (const c of result) {
+      const dr = c.r - r, dg = c.g - g, db = c.b - b;
+      if (Math.sqrt(dr*dr + dg*dg + db*db) < 40) { tooClose = true; break; }
+    }
+    if (tooClose) continue;
+    result.push({ r, g, b, count });
+    if (result.length >= maxColors) break;
+  }
+  return result;
+}
+
+function handleImage(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    $('#image-preview').src = url;
+    $('#image-preview-row').hidden = false;
+
+    // Canvas に縮小描画（最大 200x200）
+    const canvas = $('#image-canvas');
+    const scale = Math.min(200 / img.width, 200 / img.height, 1);
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    const colors = extractDominantColors(imageData, 6);
+    renderImageColors(colors);
+  };
+  img.src = url;
+}
+
+let selectedImageColorIdx = 0;
+
+function renderImageColors(colors) {
+  const container = $('#image-colors');
+  selectedImageColorIdx = 0;
+  container.innerHTML = colors.map((c, i) => {
+    const hex = `#${c.r.toString(16).padStart(2,'0').toUpperCase()}${c.g.toString(16).padStart(2,'0').toUpperCase()}${c.b.toString(16).padStart(2,'0').toUpperCase()}`;
+    return `
+      <div class="image-color-row${i === 0 ? ' active' : ''}" data-idx="${i}" data-r="${c.r}" data-g="${c.g}" data-b="${c.b}">
+        <div class="image-color-chip" style="background:${hex}"></div>
+        <div class="image-color-info"><strong>${hex}</strong> 　${(c.count/colors[0].count*100).toFixed(0)}%</div>
+      </div>
+    `;
+  }).join('');
+  container.querySelectorAll('.image-color-row').forEach(row => {
+    row.addEventListener('click', () => {
+      container.querySelectorAll('.image-color-row').forEach(r => r.classList.remove('active'));
+      row.classList.add('active');
+      selectedImageColorIdx = parseInt(row.dataset.idx);
+      const r = parseInt(row.dataset.r), g = parseInt(row.dataset.g), b = parseInt(row.dataset.b);
+      runImageSearch(r, g, b);
+    });
+  });
+  if (colors.length > 0) {
+    runImageSearch(colors[0].r, colors[0].g, colors[0].b);
+  }
+}
+
+function runImageSearch(r, g, b) {
+  const lab = rgbToLab(r, g, b);
+  const scored = STATE.colors
+    .map(col => ({ col, de: deltaE2000(lab, col.lab) }))
+    .sort((a, b) => a.de - b.de)
+    .slice(0, 5);
+  const container = $('#image-results');
+  container.innerHTML = scored.map(({ col, de }, i) => `
+    <div class="cmyk-result-row" data-code="${col.code}">
+      <div class="cmyk-chip" style="background:${col.hex}"></div>
+      <div class="cmyk-meta">
+        <span class="cmyk-meta-name">${i === 0 ? '★ ' : ''}${escape(col.name)}</span>
+        <span class="cmyk-meta-de">ΔE=${de.toFixed(2)}  ${col.hex}  C${col.cmyk[0]} M${col.cmyk[1]} Y${col.cmyk[2]} K${col.cmyk[3]}</span>
+      </div>
+    </div>
+  `).join('');
+  container.querySelectorAll('.cmyk-result-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const c = STATE.colors.find(c => c.code === row.dataset.code);
+      if (c) { $('#image-search').close(); openDetail(c); }
+    });
+  });
+}
+
+function setupImageDialog() {
+  const dlg = $('#image-search');
+  const drop = $('#image-drop');
+  const input = $('#image-input');
+  const pick = $('#image-pick');
+
+  pick.addEventListener('click', () => input.click());
+  drop.addEventListener('click', (e) => { if (e.target === drop || e.target.tagName === 'P') input.click(); });
+  input.addEventListener('change', (e) => {
+    if (e.target.files[0]) handleImage(e.target.files[0]);
+  });
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('hover'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('hover'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('hover');
+    if (e.dataTransfer.files[0]) handleImage(e.dataTransfer.files[0]);
+  });
+
+  // クリップボード貼り付けも対応
+  dlg.addEventListener('paste', (e) => {
+    for (const item of e.clipboardData.items) {
+      if (item.type.startsWith('image/')) {
+        handleImage(item.getAsFile());
+        return;
+      }
+    }
+  });
 }
 
 // ── CMYK search dialog ──
@@ -257,6 +474,16 @@ async function init() {
     }
   });
   dlg.addEventListener('cancel', () => dlg.close());
+
+  // Hue bar
+  setupHueBar();
+
+  // Image search
+  setupImageDialog();
+  $('#image-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    $('#image-search').showModal();
+  });
 
   // CMYK search
   $('#cmyk-link').addEventListener('click', (e) => {

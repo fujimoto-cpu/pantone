@@ -21,8 +21,12 @@
     </div>
     <div class="meta">
       <span id="count">…</span> 色 ／
-      <a href="#" id="cmyk-link">CMYK→Pantone 検索</a> ／
+      <a href="#" id="cmyk-link">CMYK検索</a> ／
+      <a href="#" id="image-link">画像から色検出</a> ／
       <a href="https://github.com/aj90909/unofficial-pantone-solid-coated-2024-v5" target="_blank" rel="noopener">データ出典</a>
+    </div>
+    <div class="hue-bar" id="hue-bar" title="クリックで色相ジャンプ（色相順表示時のみ）">
+      <div class="hue-bar-marker" id="hue-marker"></div>
     </div>
   </div>
 </header>
@@ -35,6 +39,25 @@
 <dialog id="detail">
   <div class="detail-content"></div>
   <button class="close" aria-label="閉じる">×</button>
+</dialog>
+
+<dialog id="image-search">
+  <form method="dialog" class="image-form">
+    <h2>画像から色を検出</h2>
+    <div class="image-drop" id="image-drop">
+      <input type="file" id="image-input" accept="image/*" hidden>
+      <p>ここに画像をドラッグ&ドロップ<br>または <button type="button" id="image-pick">ファイル選択</button></p>
+    </div>
+    <canvas id="image-canvas" hidden></canvas>
+    <div class="image-preview-row" hidden id="image-preview-row">
+      <img id="image-preview" alt="">
+      <div class="image-colors" id="image-colors"></div>
+    </div>
+    <div class="image-results" id="image-results"></div>
+    <div class="cmyk-actions">
+      <button type="submit" class="close-btn">閉じる</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="cmyk-search">
