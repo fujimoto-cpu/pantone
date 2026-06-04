@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Pantone Solid Coated Quick Reference</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <h1>Pantone <span class="thin">Solid Coated</span> <span class="thin small">Quick Reference</span></h1>
+    <div class="controls">
+      <input type="search" id="search" placeholder="番号・名称・HEX で検索（例: 523, Cool Gray, #B5A5C3）" autocomplete="off">
+      <div class="sort-group">
+        <button data-sort="hue" class="active">色相順</button>
+        <button data-sort="code">番号順</button>
+        <button data-sort="light">明度順</button>
+      </div>
+    </div>
+    <div class="meta">
+      <span id="count">…</span> 色 ／
+      <a href="#" id="cmyk-link">CMYK→Pantone 検索</a> ／
+      <a href="https://github.com/aj90909/unofficial-pantone-solid-coated-2024-v5" target="_blank" rel="noopener">データ出典</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="grid"></div>
+  <p class="empty" id="empty" hidden>該当する色なし</p>
+</main>
+
+<dialog id="detail">
+  <div class="detail-content"></div>
+  <button class="close" aria-label="閉じる">×</button>
+</dialog>
+
+<dialog id="cmyk-search">
+  <form method="dialog" class="cmyk-form">
+    <h2>CMYK から最近傍 Pantone を探す</h2>
+    <div class="cmyk-inputs">
+      <label>C <input type="number" id="c" min="0" max="100" step="1" value="30"></label>
+      <label>M <input type="number" id="m" min="0" max="100" step="1" value="40"></label>
+      <label>Y <input type="number" id="y" min="0" max="100" step="1" value="0"></label>
+      <label>K <input type="number" id="k" min="0" max="100" step="1" value="15"></label>
+    </div>
+    <div class="cmyk-results"></div>
+    <div class="cmyk-actions">
+      <button type="button" id="cmyk-run">最近傍を探す</button>
+      <button type="submit" class="close-btn">閉じる</button>
+    </div>
+  </form>
+</dialog>
+
+<footer>
+  <p>非公式参考データ — Pantone® は Pantone LLC の登録商標です。印刷現場での厳密な指定には公式 Pantone カラーブックを参照してください。</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
