@@ -130,12 +130,25 @@ function render() {
     // 通常ソート
     const key = STATE.sort;
     if (key === 'hue') {
+      // Pantone Book風：色相を24バンドに分けて、各バンド内で明度→彩度の順で並べる
+      // 黄(0.13)から始まる方が見やすいので hue を 0.13 オフセット
+      const HUE_OFFSET = 0.13;  // 黄色を起点に
+      const BAND_COUNT = 24;
       filtered = [...filtered].sort((a, b) => {
         // 無彩色（彩度極低）は最後に
-        if (a.s < 0.05 && b.s >= 0.05) return 1;
-        if (b.s < 0.05 && a.s >= 0.05) return -1;
-        if (a.h !== b.h) return a.h - b.h;
-        return a.l - b.l;
+        const aGray = a.s < 0.08;
+        const bGray = b.s < 0.08;
+        if (aGray && !bGray) return 1;
+        if (!aGray && bGray) return -1;
+        if (aGray && bGray) return a.l - b.l;  // 無彩色は明度順
+        // 色相バンドで区切る（黄スタート・循環）
+        const hueA = ((a.h - HUE_OFFSET) + 1) % 1;
+        const hueB = ((b.h - HUE_OFFSET) + 1) % 1;
+        const bandA = Math.floor(hueA * BAND_COUNT);
+        const bandB = Math.floor(hueB * BAND_COUNT);
+        if (bandA !== bandB) return bandA - bandB;
+        // 同一バンド内：明度が高い順（明るい→暗い・Pantone Book 上から下）
+        return b.l - a.l;
       });
     } else if (key === 'code') {
       filtered = [...filtered].sort((a, b) => a.code.localeCompare(b.code, 'en', { numeric: true }));
