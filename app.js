@@ -85,6 +85,15 @@ function deltaE2000(lab1, lab2) {
   );
 }
 
+// ── Lab → LCH (knowledge-perceptual sort用) ──
+
+function labToLch(L, a, b) {
+  const C = Math.sqrt(a * a + b * b);
+  let H = Math.atan2(b, a) * 180 / Math.PI;
+  if (H < 0) H += 360;
+  return { L, C, H };  // L: 0-100, C: 0-130+, H: 0-360
+}
+
 // ── HSL helpers ──
 
 function rgbToHsl(r, g, b) {
@@ -130,25 +139,33 @@ function render() {
     // 通常ソート
     const key = STATE.sort;
     if (key === 'hue') {
-      // Pantone Book風：色相を24バンドに分けて、各バンド内で明度→彩度の順で並べる
-      // 黄(0.13)から始まる方が見やすいので hue を 0.13 オフセット
-      const HUE_OFFSET = 0.13;  // 黄色を起点に
-      const BAND_COUNT = 24;
+      // Lab→LCH ベースの知覚的ソート
+      // 色相 18バンド × 彩度（鮮やか→くすみ）× 明度（明るい→暗い）
+      // 黄(H≈90°)を起点に色相循環
+      const HUE_OFFSET = 90;     // 黄スタート (Lab H: 0=赤, 90=黄, 180=緑, 270=青)
+      const HUE_BANDS = 18;       // 色相 18 等分（20°/バンド）
+      const HUE_STEP = 360 / HUE_BANDS;
+      // 彩度バンド：低（無彩色）・くすみ・中・鮮やかの 4 段
+      const satBand = (C) => C < 8 ? 0 : C < 25 ? 1 : C < 50 ? 2 : 3;
       filtered = [...filtered].sort((a, b) => {
-        // 無彩色（彩度極低）は最後に
-        const aGray = a.s < 0.08;
-        const bGray = b.s < 0.08;
-        if (aGray && !bGray) return 1;
-        if (!aGray && bGray) return -1;
-        if (aGray && bGray) return a.l - b.l;  // 無彩色は明度順
-        // 色相バンドで区切る（黄スタート・循環）
-        const hueA = ((a.h - HUE_OFFSET) + 1) % 1;
-        const hueB = ((b.h - HUE_OFFSET) + 1) % 1;
-        const bandA = Math.floor(hueA * BAND_COUNT);
-        const bandB = Math.floor(hueB * BAND_COUNT);
+        const la = labToLch(a.lab[0], a.lab[1], a.lab[2]);
+        const lb = labToLch(b.lab[0], b.lab[1], b.lab[2]);
+        // 無彩色（C<8）は最後に
+        if (la.C < 8 && lb.C >= 8) return 1;
+        if (lb.C < 8 && la.C >= 8) return -1;
+        if (la.C < 8 && lb.C < 8) return lb.L - la.L;  // 無彩色は明度高い順
+        // 色相バンドで区切る（黄起点で循環）
+        const hueA = (la.H - HUE_OFFSET + 360) % 360;
+        const hueB = (lb.H - HUE_OFFSET + 360) % 360;
+        const bandA = Math.floor(hueA / HUE_STEP);
+        const bandB = Math.floor(hueB / HUE_STEP);
         if (bandA !== bandB) return bandA - bandB;
-        // 同一バンド内：明度が高い順（明るい→暗い・Pantone Book 上から下）
-        return b.l - a.l;
+        // 同色相内：彩度バケット（鮮やか→中→くすみ）
+        const sA = satBand(la.C);
+        const sB = satBand(lb.C);
+        if (sA !== sB) return sB - sA;  // 高彩度→低彩度
+        // 同彩度内：明度高い順
+        return lb.L - la.L;
       });
     } else if (key === 'code') {
       filtered = [...filtered].sort((a, b) => a.code.localeCompare(b.code, 'en', { numeric: true }));
