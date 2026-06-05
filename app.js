@@ -5,6 +5,7 @@ const STATE = {
   filtered: [],
   sort: 'hue',
   query: '',
+  fgOnly: false,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -118,7 +119,8 @@ function rgbToHsl(r, g, b) {
 
 function render() {
   const q = STATE.query.trim().toLowerCase();
-  let filtered = STATE.colors;
+  // Formula Guide フィルタを最初に適用
+  let filtered = STATE.fgOnly ? STATE.colors.filter(c => c.fg) : STATE.colors;
 
   if (q) {
     // HEX判定（# で始まる or 6文字hex）
@@ -487,6 +489,11 @@ async function init() {
       STATE.sort = btn.dataset.sort;
       render();
     });
+  });
+
+  $('#fg-only').addEventListener('change', (e) => {
+    STATE.fgOnly = e.target.checked;
+    render();
   });
 
   // Detail dialog
