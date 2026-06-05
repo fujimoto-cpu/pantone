@@ -5,7 +5,7 @@ const STATE = {
   filtered: [],
   sort: 'hue',
   query: '',
-  fgOnly: false,
+  fgOnly: true,
 };
 
 const $ = (sel) => document.querySelector(sel);
